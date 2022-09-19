@@ -73,8 +73,17 @@ FLASHMEM void AudioStream::initialize_memory(audio_block_t *data, unsigned int n
 	for (i=0; i < num; i++) {
 		data[i].memory_pool_index = i;
 	}
+	if (update_scheduled == false) {
+		// if no hardware I/O has taken responsibility for update,
+		// start a timer which will call update_all() at the correct rate
+		IntervalTimer *timer = new IntervalTimer();
+		if (timer) {
+			float usec = 1e6 * AUDIO_BLOCK_SAMPLES / AUDIO_SAMPLE_RATE_EXACT;
+			timer->begin(update_all, usec);
+			update_setup();
+		}
+	}
 	__enable_irq();
-
 }
 
 // Allocate 1 audio data block.  If successful
@@ -243,14 +252,16 @@ int AudioConnection::connect(void)
 		{
 			break;
 		}
-		if (dest_index >= dst->num_inputs) // input number too high
-		{
-			result = 2;
-			break;
-		}
+		
 		if (!src || !dst) // NULL src or dst - [old] Stream object destroyed
 		{
 			result = 3;
+			break;
+		}
+			
+		if (dest_index >= dst->num_inputs) // input number too high
+		{
+			result = 2;
 			break;
 		}
 			
@@ -336,8 +347,6 @@ int AudioConnection::connect(AudioStream &source, unsigned char sourceOutput,
 	
 	if (!isConnected)
 	{
-		int cr;
-		
 		src = &source;
 		dst = &destination;
 		src_index = sourceOutput;
@@ -369,20 +378,6 @@ int AudioConnection::disconnect(void)
 			src->destination_list = NULL;
 		}
 	} else {
-		/*  this is the old, buggy code
-		while (p) {
-			if (p == this) {
-				if (p->next_dest) {
-					p = next_dest; // just destroys our working pointer!
-					break;
-				} else {
-					p = NULL;
-					break;
-				}
-			}
-			p = p->next_dest;
-		}
-		*/
 		while (p)
 		{
 			if (p->next_dest == this) // found the parent of the disconnecting object
